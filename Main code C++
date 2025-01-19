@@ -1,0 +1,541 @@
+#include <iostream>// Handles standard input and output.
+#include <string>//Deals with string data types and manipulation.
+#include <fstream>//Provides file input/output functionality.
+#include <iomanip>//Allows manipulation of the formatting of input/output.
+#include <sstream>//Enables string-based input/output operations (like streams but with strings).0
+using namespace std;
+
+// Class to represent an action for undo functionality
+class Action {
+public:
+    // Types of actions that can be performed
+    enum ActionType { ADD_EXPENSE, REMOVE_EXPENSE, ADD_REMINDER, REMOVE_REMINDER, RESET_MONTH };
+
+    // Default constructor
+    Action() : type(ADD_EXPENSE), day(0), amount(0.0), reminder("") {}
+
+    // Constructor with parameters for initializing action details
+    Action(ActionType type, int day, double amount = 0.0, string reminder = "")
+        : type(type), day(day), amount(amount), reminder(reminder) {
+    }
+
+    ActionType type;  // Type of the action
+    int day;          // Day associated with the action
+    double amount;    // Amount associated with the action 
+    string reminder;  // Reminder associated with the action 
+};
+
+// Class for managing daily expenses and reminders
+class DailyExpenses {
+private:
+    double expenses[31];             // Array for storing daily expenses (max 31 days)
+    string reminders[31];            // Array for storing daily reminders
+    int days;                        // Number of days in the month (28 to 31 days)
+    Action historyActions[100];      // Array to store action history for undo functionality
+    int historyIndex;                // Index for the most recent action in history
+    string log;                      // Log to track actions made by the user
+    string reminderQueue[10];        // Array to manage a reminder queue (FIFO)
+    int queueStart, queueEnd;        // Queue pointers
+    int queueSize;                   // Size of the queue
+    double balance;                  // Remaining balance after expenses
+
+public:
+    // Constructor to initialize expenses, reminders, and balance
+    DailyExpenses(int days = 30, double initialBalance = 1000.0)
+        : days(days), historyIndex(0), queueStart(0), queueEnd(0), queueSize(0), balance(initialBalance) {
+        // Initialize all expenses to 0.0 and reminders to empty strings
+        for (int i = 0; i < 31; ++i) {
+            expenses[i] = 0.0;
+            reminders[i] = "";
+        }
+    }
+    // Getter for the number of days in the month
+    int getDays() const {
+        return days;
+    }
+    // Modify the balance
+    void modifyBalance(double amount) {
+        balance += amount;
+        log += "Balance modified by RM" + to_string(amount) + ". New balance: RM" + to_string(balance) + "\n";
+        cout << "[Success] Balance updated. New balance: RM" << fixed << setprecision(2) << balance << endl;
+    }
+
+    // Remove expense for a specific day
+    void removeExpense(int day) {
+        if (day >= 1 && day <= days) {
+            expenses[day - 1] = 0.0;
+            cout << "Expense for Day " << day << " has been removed.\n";
+        }
+        else {
+            cout << "Invalid day!\n";
+        }
+    }
+
+    // Modify expense for a specific day (add or deduct)
+    void modifyExpense(int day, double amount, bool isDeduction) {
+        if (day >= 1 && day <= days) {
+            string action = isDeduction ? "deducted" : "added";
+            log += "Day " + to_string(day) + ": RM" + to_string(amount) + " " + action + " to the expense.\n";
+
+            if (isDeduction) {
+                historyActions[historyIndex++] = Action(Action::REMOVE_EXPENSE, day, amount);
+                expenses[day - 1] -= amount;
+                balance -= amount;
+            }
+            else {
+                historyActions[historyIndex++] = Action(Action::ADD_EXPENSE, day, amount);
+                expenses[day - 1] += amount;
+                balance += amount;
+            }
+
+            cout << "\n[Success] Expense for Day " << day << " has been updated.\n";
+        }
+        else {
+            cout << "\n[Error] Invalid day!\n";
+        }
+    }
+
+    // Add a reminder for a specific day
+    void addReminder(int day, const string& reminder) {
+        if (day >= 1 && day <= days) {
+            log += "Day " + to_string(day) + ": Reminder '" + reminder + "' added.\n";
+            historyActions[historyIndex++] = Action(Action::ADD_REMINDER, day, 0.0, reminder);
+            reminders[day - 1] = reminder;
+            cout << "\n[Success] Reminder added for Day " << day << ".\n";
+        }
+        else {
+            cout << "\n[Error] Invalid day!\n";
+        }
+    }
+
+    // Remove a reminder for a specific day
+    void removeReminder(int day) {
+        if (day >= 1 && day <= days) {
+            log += "Day " + to_string(day) + ": Reminder removed.\n";
+            historyActions[historyIndex++] = Action(Action::REMOVE_REMINDER, day, 0.0, reminders[day - 1]);
+            reminders[day - 1] = "";
+            cout << "\n[Success] Reminder removed for Day " << day << ".\n";
+        }
+        else {
+            cout << "\n[Error] Invalid day!\n";
+        }
+    }
+
+    // Reset the month and clean up data
+    void resetMonth(int newDays) {
+        if (newDays < 28 || newDays > 31) {
+            cout << "\n[Error] Invalid number of days!\n";
+            return;
+        }
+
+        // Log the reset action
+        log += "Month reset to " + to_string(newDays) + " days.\n";
+        historyActions[historyIndex++] = Action(Action::RESET_MONTH, days);
+
+        // Reset expenses and reminders
+        for (int i = 0; i < 31; ++i) {
+            expenses[i] = 0.0;
+            reminders[i] = "";
+        }
+
+        // Update the number of days
+        days = newDays;
+
+        // Prompt for a new balance
+        cout << "\n[Info] The month has been reset to " << days << " days.\n";
+        cout << "Please enter your new balance: ";
+        cin >> balance;
+
+        if (balance < 0) {
+            cout << "[Error] Balance cannot be negative. Setting balance to 0.\n";
+            balance = 0.0;
+        }
+
+        // Reset history and queue
+        historyIndex = 0;
+        queueStart = 0;
+        queueEnd = 0;
+        queueSize = 0;
+
+        cout << "[Success] Month reset. New balance is set to RM" << fixed << setprecision(2) << balance << ".\n";
+    }
+
+    // Undo the last action performed
+    void undoLastAction() {
+        if (historyIndex <= 0) {
+            cout << "\n[Error] No actions to undo.\n";
+            return;
+        }
+
+        Action lastAction = historyActions[--historyIndex];
+
+        switch (lastAction.type) {
+        case Action::ADD_EXPENSE:
+            expenses[lastAction.day - 1] += lastAction.amount;
+            balance -= lastAction.amount;
+            cout << "\n[Undo] Expense addition reversed for Day " << lastAction.day << ".\n";
+            break;
+
+        case Action::REMOVE_EXPENSE:
+            expenses[lastAction.day - 1] -= lastAction.amount;
+            balance += lastAction.amount;
+            cout << "\n[Undo] Expense removal reversed for Day " << lastAction.day << ".\n";
+            break;
+
+        case Action::ADD_REMINDER:
+            reminders[lastAction.day - 1] = "";
+            cout << "\n[Undo] Reminder addition reversed for Day " << lastAction.day << ".\n";
+            break;
+
+        case Action::REMOVE_REMINDER:
+            reminders[lastAction.day - 1] = lastAction.reminder;
+            cout << "\n[Undo] Reminder removal reversed for Day " << lastAction.day << ".\n";
+            break;
+
+        case Action::RESET_MONTH:
+            days = lastAction.day;
+            cout << "\n[Undo] Month reset reversed. Reverted to " << days << " days.\n";
+            break;
+
+        default:
+            cout << "\n[Error] Invalid action type.\n";
+        }
+    }
+    // Show all daily expenses and their corresponding reminders
+    void showExpenses() const {
+        cout << "\n========== Daily Expenses ==========\n";
+        for (int i = 0; i < days; ++i) {
+            cout << "Day " << setw(2) << i + 1 << ": RM" << fixed << setprecision(2) << expenses[i];
+            if (!reminders[i].empty()) {
+                cout << " | Reminder: " << reminders[i];  // Display reminder if set
+            }
+            cout << endl;
+        }
+        cout << "====================================\n";
+    }
+    //linear search for spesific day
+    void showSpecificDayExpenses(int day) const {
+        if (day < 1 || day > days) {
+            cout << "\n[Error] Invalid day!\n";
+            return;
+        }
+
+        for (int i = 0; i < days; ++i) {
+            if (i + 1 == day) { // Linear search for the maching day
+                cout << "\n========== Day " << day << " Details ==========\n";
+                cout << "Expense: RM" << fixed << setprecision(2) << expenses[i];
+
+                if (!reminders[i].empty()) {
+                    cout << " | Reminder: " << reminders[i]; // Show reminder if it exists
+                }
+
+                cout << "\n===========================================\n";
+                return; // Exit the function once the day is found
+            }
+        }
+
+        cout << "\n[Error] Day not found!\n";
+    }
+    
+    // View the log in the terminal
+    void viewLog() const {
+        cout << "\n========== Action Log ==========\n";
+        cout << log;
+        cout << "=================================\n";
+    }
+
+    void saveToFile(const string& filename) const {
+        ofstream file(filename);
+        if (file.is_open()) {
+            // Save expenses, reminders, and log
+            for (int i = 0; i < days; ++i) {
+                file << "Day " << i + 1 << ": RM" << fixed << setprecision(2) << expenses[i];
+                if (!reminders[i].empty()) {
+                    file << " | Reminder: " << reminders[i];
+                }
+                file << endl;
+            }
+
+            // Save the log
+            file << "\n========== Action Log ==========\n";
+            file << log;
+            file << "=================================\n";
+
+            // Save the balance
+            file << "\n========== Balance ==========\n";
+            file << "Remaining Balance: RM" << fixed << setprecision(2) << balance << endl;
+            file << "=================================\n";
+
+            file.close();
+            cout << "\n[Success] Expenses, log, and balance saved to " << filename << ".\n";
+        }
+        else {
+            cout << "\n[Error] Failed to save expenses to file. Check the file path.\n";
+        }
+    }
+
+    // Get total expenses for the month
+    double getTotalExpenses() const {
+        double total = 0.0;
+        for (int i = 0; i < days; ++i) {
+            total += expenses[i];  // Sum up all expenses
+        }
+        return total;
+    }
+
+    // Add a reminder to the queue (FIFO)
+    void addReminderToQueue(const string& reminder) {
+        if (queueSize < 31) {
+            reminderQueue[queueEnd] = reminder;
+            queueEnd = (queueEnd + 1) % 31;  // Move to the next position, wrapping around
+            queueSize++;
+            cout << "\n[Success] Reminder added to the queue.\n";
+        }
+        else {
+            cout << "\n[Error] Reminder queue is full! Removing oldest reminder.\n";
+            removeReminderFromQueue();  // Remove the oldest reminder
+            addReminderToQueue(reminder);  // Re-add the new reminder
+        }
+    }
+    // Get the average daily expense
+    double getAverageExpense() const {
+        return days == 0 ? 0.0 : getTotalExpenses() / days;  // Prevent division by zero
+    }
+
+    // Get the day with the highest spending
+    int getHighestSpendingDay() const {
+        double maxSpend = expenses[0];
+        int maxDay = 1;
+        for (int i = 1; i < days; ++i) {
+            if (expenses[i] > maxSpend) {
+                maxSpend = expenses[i];
+                maxDay = i + 1;
+            }
+        }
+        return maxDay;
+    }
+
+    // Get the day with the lowest spending
+    int getLowestSpendingDay() const {
+        double minSpend = expenses[0];
+        int minDay = 1;
+        for (int i = 1; i < days; ++i) {
+            if (expenses[i] < minSpend) {
+                minSpend = expenses[i];
+                minDay = i + 1;
+            }
+        }
+        return minDay;
+    }
+
+    // Remove a reminder from the queue (FIFO)
+    void removeReminderFromQueue() {
+        if (queueSize > 0) {
+            cout << "\n[Success] Reminder '" << reminderQueue[queueStart] << "' removed from the queue.\n";
+            queueStart = (queueStart + 1) % 31;  // Move to the next position, wrapping around
+            queueSize--;
+        }
+        else {
+            cout << "\n[Error] Queue is empty!\n";
+        }
+    }
+
+    // View all reminders in the queue
+    void viewReminderQueue() const {
+        if (queueSize == 0) {
+            cout << "\n[Error] Queue is empty!\n";
+        }
+        else {
+            cout << "\n========== Reminder Queue ==========\n";
+            int idx = queueStart;
+            for (int i = 0; i < queueSize; i++) {
+                cout << "Reminder: " << reminderQueue[idx] << endl;
+                idx = (idx + 1) % 31;  // Move to next reminder in queue, wrapping around
+            }
+            cout << "====================================\n";
+        }
+    }
+};
+void displayMenu() {
+    cout << "\n========== Finance Tracker Menu ==========\n";
+    cout << "1. Add or Deduct Expense\n";
+    cout << "2. Add Reminder\n";
+    cout << "3. Remove Expense\n";
+    cout << "4. Remove Reminder\n";
+    cout << "5. Undo Last Action\n";
+    cout << "6. View Daily Expenses\n";
+    cout << "7. Search Specific Day\n";
+    cout << "8. View Log\n";
+    cout << "9. View Analytics\n";
+    cout << "10. Save Data to File\n";
+    cout << "11. Reset Month (Change Number of Days) [28-31]\n";
+    cout << "12. Add Reminder to Queue\n";
+    cout << "13. Remove Reminder from Queue\n";
+    cout << "14. View Reminder Queue\n";
+    cout << "15. Modify Balance\n";
+    cout << "16. Exit\n";
+    cout << "==========================================\n";
+}
+//loop to make sure no wrong inputs
+int getUserChoice() {
+    int choice;
+    while (true) {
+        cout << "Enter your choice: ";
+        cin >> choice;
+
+        // Check if the input is a valid number
+        if (cin.fail()) {
+            cin.clear();
+            cin.ignore(10000, '\n');
+            cout << "Invalid input! Please enter a number between 1 and 16.\n";
+        }
+        // Ensure the choice is within the valid range
+        else if (choice < 1 || choice > 16) {
+            cout << "Invalid choice! Please enter a number between 1 and 16.\n";
+        }
+        else {
+            return choice;
+        }
+    }
+}
+
+int main() {
+    DailyExpenses tracker;  // Initialize tracker with default settings (30 days, RM1000 balance)
+    int choice;
+
+    // Start the menu loop
+    do{
+        displayMenu();  // Display the menu options to the user
+        choice = getUserChoice();  // Get the user's menu choice
+
+        // Process the user's choice based on the menu options
+        switch (choice) {
+        case 1: {
+            // Add or Deduct Expense
+            int day;
+            double amount;
+            bool isDeduction;
+            cout << "Enter day (1 to 31): ";
+            cin >> day;
+            cout << "Enter amount: ";
+            cin >> amount;
+            cout << "Is it a deduction? (1 for Yes, 0 for No): ";
+            cin >> isDeduction;
+            tracker.modifyExpense(day, amount, isDeduction);  // Modify the expense based on the user input
+            break;
+        }
+        case 2: {
+            // Add Reminder
+            int day;
+            string reminder;
+            cout << "Enter day (1 to 31): ";
+            cin >> day;
+            cout << "Enter reminder text: ";
+            cin.ignore();  // Ignore the newline character left by previous input
+            getline(cin, reminder);  // Get the entire reminder text
+            tracker.addReminder(day, reminder);  // Add the reminder for the specified day
+            break;
+        }
+        case 3: {
+            // Remove Expense
+            int day;
+            cout << "Enter day (1 to 31): ";
+            cin >> day;
+            tracker.removeExpense(day);  // Remove the expense for the specified day
+            break;
+        }
+        case 4: {
+            // Remove Reminder
+            int day;
+            cout << "Enter day (1 to 31): ";
+            cin >> day;
+            tracker.removeReminder(day);  // Remove the reminder for the specified day
+            break;
+        }
+        case 5:
+            // Undo Last Action
+            tracker.undoLastAction();  // Undo the most recent action (if any)
+            break;
+        case 6:
+            // View Daily Expenses
+            tracker.showExpenses();  // Show all daily expenses for the month
+            break;
+        case 7: {
+            // Search Specific Day
+            int day;
+            cout << "Enter day (1 to " << tracker.getDays() << "): ";
+            cin >> day;
+            tracker.showSpecificDayExpenses(day);  // Display expenses for a specific day
+            break;
+        }
+        case 8:
+            // View Log
+            tracker.viewLog();  // Display the action log
+            break;
+        case 9: {
+            // View Analytics
+            double totalExpenses = tracker.getTotalExpenses();  // Get total expenses
+            double averageExpense = tracker.getAverageExpense();  // Get average expense
+            int highestSpendingDay = tracker.getHighestSpendingDay();  // Get the day with the highest expense
+            int lowestSpendingDay = tracker.getLowestSpendingDay();  // Get the day with the lowest expense
+
+            cout << "\n========== Analytics ==========\n";
+            cout << "Total Expenses: RM" << fixed << setprecision(2) << totalExpenses << endl;
+            cout << "Average Daily Expense: RM" << fixed << setprecision(2) << averageExpense << endl;
+            cout << "Day with Highest Spending: Day " << highestSpendingDay << endl;
+            cout << "Day with Lowest Spending: Day " << lowestSpendingDay << endl;
+            cout << "================================\n";
+            break;
+        }
+        case 10: {
+            // Save Data to File
+            string filename;
+            cout << "Enter filename to save data: ";
+            cin >> filename;
+            tracker.saveToFile(filename);  // Save the data to a specified file
+            break;
+        }
+        case 11: {
+            // Reset Month (Change Number of Days)
+            int newDays;
+            cout << "Enter new number of days (28-31): ";
+            cin >> newDays;
+            tracker.resetMonth(newDays);  // Change the number of days in the month
+            break;
+        }
+        case 12: {
+            // Add Reminder to Queue
+            string reminder;
+            cout << "Enter reminder text: ";
+            cin.ignore();  // Ignore the leftover newline character
+            getline(cin, reminder);  // Get the reminder text
+            tracker.addReminderToQueue(reminder);  // Add the reminder to the queue
+            break;
+        }
+        case 13:
+            // Remove Reminder from Queue
+            tracker.removeReminderFromQueue();
+            break;
+        case 14:
+            // View Reminder Queue
+            tracker.viewReminderQueue(); 
+            break;
+        case 15: {
+            // Modify Balance
+            double amount;
+            cout << "Enter the amount to modify the balance (positive to add, negative to subtract): ";
+            cin >> amount;
+            tracker.modifyBalance(amount); 
+            break;
+        }
+        case 16:
+            // Exit
+            cout << "Exiting program...\n";  
+            break;
+        default:
+            break;
+        }
+    } while (choice != 16);  
+
+    return 0;  
+}
