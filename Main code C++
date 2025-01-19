@@ -1,3 +1,6 @@
+//Finance tracker C++ in Data structure
+//made by Alvinc,Dharvin,Sarvin and Vaiges
+
 #include <iostream>// Handles standard input and output.
 #include <string>//Deals with string data types and manipulation.
 #include <fstream>//Provides file input/output functionality.
