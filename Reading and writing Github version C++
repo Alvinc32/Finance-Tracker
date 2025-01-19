@@ -1,0 +1,64 @@
+//READING EXAMPLE CODE 
+#include <fstream>
+#include <iostream>
+#include <regex>
+#include <string>
+
+int main(int argc, char **argv) {
+  if (argc < 2) {
+    std::cerr << "usage: " << argv[0] << " <filename>\n";
+    return 0x1;
+  }
+
+  std::ifstream *file = new std::ifstream();
+
+  file->open(argv[1], std::ios::in); // open file with in mode
+
+  if (file->is_open()) {
+    std::string data;
+
+    // read file until eof is hit
+    std::getline(*file, data);
+    while (!file->eof()) {
+      std::cout << data << std::endl;
+      std::getline(*file, data);
+    }
+  } else {
+    std::cerr << "Unable to open file \n";
+  }
+
+  file->close(); // close handle
+
+  delete file;
+  file = nullptr;
+  return 0x0;
+}
+
+//Writing Example code
+
+#include <cstring>
+#include <fstream>
+#include <iostream>
+
+int main(int argc, char **argv) {
+  if (argc < 3) {
+    std::cerr << "usage: " << argv[0] << " <filename> <text>\n";
+    return 0x1;
+  }
+
+  std::ofstream *file = new std::ofstream();
+
+  file->open(argv[1], std::ios::out); // open file with out mode
+
+  if (file->is_open()) {
+    (*file) << argv[2] << std::endl; // deref the pointer and write into file
+  } else {
+    std::cerr << "Failed to open file\n";
+  }
+
+  file->close(); // close the handle
+
+  delete file;
+  file = nullptr;
+  return 0x0;
+}
